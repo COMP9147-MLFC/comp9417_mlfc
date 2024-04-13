@@ -1,7 +1,43 @@
 from typing import Any
 
+import cv2
+import numpy as np
 import pandas as pd
 from PIL import Image
+
+########################################################################################################################
+# Data Augmentation functions
+########################################################################################################################
+def ai_gen_augment(image_file_path: str):
+    """
+    Uses a pre-trained Generative AI Algorithm to create additional virtual samples based on original images
+    :param image_file_path: the path to image file.
+    :return img_aug: the augmented image
+    """
+    # TODO Implement AI Generated Image Augment Function
+    return img_aug
+
+def image_augment(image_file_path: str):
+    """
+    Uses various image transformations such as rotations, flips and zooms to create additional virtual samples
+    :param image_file_path: the path to image file.
+    :return img_aug: the augmented image
+    """
+    # TODO Implement Image Manipulation Augment Function
+    return img_aug
+
+def noise_augment(image_file_path: str):
+    """
+    Applies random gaussian noise to obfuscate features in the image and generate additional virtual samples
+    :param image_file_path: the path to image file.
+    :return img_aug: the augmented image
+    """
+    
+    img = cv2.imread(image_file_path)[...,::-1]/255.0
+    noise =  np.random.normal(loc=0, scale=1, size=img.shape)
+    img_aug = np.clip((img*(1 + noise*0.4)),0,1)
+
+    return img_aug
 
 
 ########################################################################################################################
