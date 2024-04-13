@@ -3,19 +3,51 @@ from typing import Any
 import cv2
 import numpy as np
 import pandas as pd
-from PIL import Image
+from PIL import 
+
+import PIL
+import torch
+from diffusers import StableDiffusionInstructPix2PixPipeline, EulerAncestralDiscreteScheduler
+from os import listdir
+from os.path import isfile, join
+
+def get_image(url):
+    image = PIL.Image.open(url)
+    image = PIL.ImageOps.exif_transpose(image)
+    image = image.convert("RGB")
+    return image
+
 
 ########################################################################################################################
 # Data Augmentation functions
 ########################################################################################################################
-def ai_gen_augment(image_file_path: str):
+def ai_gen_augment_1(image_file_path: str):
     """
     Uses a pre-trained Generative AI Algorithm to create additional virtual samples based on original images
     :param image_file_path: the path to image file.
     :return img_aug: the augmented image
     """
-    # TODO Implement AI Generated Image Augment Function
-    return img_aug
+
+    model_id = "timbrooks/instruct-pix2pix"
+    pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16, safety_checker=None)
+    pipe.to("cuda")
+    pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
+
+    prompt = "same image"
+
+    im = get_image(image_final_path)
+    images = pipe(prompt, image=im, num_inference_steps=10, image_guidance_scale=1).images
+
+    return images[0]
+
+def ai_gen_augment_2(image_file_path: str):
+    """
+    Uses a pre-trained Generative AI Algorithm to create additional virtual samples based on original images
+    :param image_file_path: the path to image file.
+    :return img_aug: the augmented image
+    """
+    # TODO Implement Image Manipulation Augment Function
+    return img_aug 
 
 def image_augment(image_file_path: str):
     """
