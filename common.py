@@ -35,7 +35,7 @@ def noise_augment(image_file_path: str):
     
     img = cv2.imread(image_file_path)[...,::-1]/255.0
     noise =  np.random.normal(loc=0, scale=1, size=img.shape)
-    img_aug = np.clip((img*(1 + noise*0.1)),0,1)
+    img_aug = np.clip((img*(1 + noise*0.4)),0,1)
 
     return img_aug
 
