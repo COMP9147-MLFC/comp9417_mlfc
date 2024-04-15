@@ -3,7 +3,6 @@ from typing import Any
 import cv2
 import numpy as np
 import pandas as pd
-from PIL import 
 
 import PIL
 import torch
@@ -35,7 +34,7 @@ def ai_gen_augment_1(image_file_path: str):
 
     prompt = "same image"
 
-    im = get_image(image_final_path)
+    im = get_image(image_file_path)
     images = pipe(prompt, image=im, num_inference_steps=10, image_guidance_scale=1).images
 
     return images[0]
