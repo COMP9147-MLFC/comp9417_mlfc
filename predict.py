@@ -39,7 +39,12 @@ def predict(model: Any, image: Image) -> str:
     :param image: the image file to predict.
     :return: the label ('Yes' or 'No)
     """
-    predicted_label = 'No'
+    prediction = model.predict(image)
+    if prediction > 0.5:
+        predicted_label = 'Yes'
+    else:
+        prediction_label = 'No'
+    
     # TODO: Implement your logic to generate prediction for an image here.
     raise RuntimeError("predict() is not implemented.")
     return predicted_label
@@ -79,6 +84,7 @@ def main(predict_data_image_dir: str,
         try:
             image_path = os.path.join(predict_data_image_dir, filename)
             image = load_single_image(image_path)
+            image = image/255
             label = predict(model, image)
             predictions.append(label)
         except Exception as ex:

@@ -1,17 +1,15 @@
 from typing import Any
-import os
-import cv2
-import PIL
-import numpy as np
+
 import pandas as pd
+import numpy as np
 import tensorflow as tf
 from PIL import Image
 from keras import layers
-from tensorflow.keras.preprocessing.image import ImageDataGenerator, load_img, img_to_array, save_img
-
-########################################################################################################################
-# Data Loading functions
-########################################################################################################################  
+from tensorflow.keras.regularizers import l2
+from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.models import Model, load_model
+from tensorflow.keras.applications import DenseNet121
+from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, BatchNormalization, Dropout
 
 
 def load_image_labels(labels_file_path: str):
@@ -49,6 +47,12 @@ def load_single_image(image_file_path: str) -> Image:
     """
     # Load the image
     image = Image.open(image_file_path)
+    image = tf.image.decode_png(image, channels=3)
+    image = tf.cast(image, tf.float32)
+    max_val = tf.reduce_max(img)
+    image_norm = (image/max_val)*255
+    image = image_norm.numpy().astype("uint8")
+    
 
     # The following are examples on how you might manipulate the image.
     # See full documentation on Pillow (PIL): https://pillow.readthedocs.io/en/stable/
@@ -76,14 +80,35 @@ def load_single_image(image_file_path: str) -> Image:
     return image
 
 
-########################################################################################################################
-# Data Augmentation functions
-########################################################################################################################
-
 
 ########################################################################################################################
 # Model Loading and Saving Functions
 ########################################################################################################################
+
+def create_model_densenet(input_shape, lr, reg_strength=0.3):
+    opt = SGD(learning_rate=lr)
+    
+    conv_base = DenseNet121(include_top=False,
+                      weights='imagenet',
+                      input_shape=input_shape)
+    
+    for layer in conv_base.layers:
+        layer.trainable = False
+        
+    top_model = conv_base.output
+    top_model = GlobalAveragePooling2D()(top_model)
+    top_model = Dense(128, activation='relu', kernel_regularizer=l2(reg_strength))(top_model)
+    top_model = BatchNormalization()(top_model)
+    top_model = Dropout(0.5)(top_model)
+    output_layer = Dense(1, activation='sigmoid')(top_model)
+    
+    model = Model(inputs=conv_base.input, outputs=output_layer)
+    
+    model.compile(optimizer=opt,
+                  loss='binary_crossentropy',
+                  metrics=['accuracy'])
+    
+    return model
 
 def save_model(model: Any, target: str, output_dir: str):
     """
@@ -133,5 +158,12 @@ def load_model(trained_model_dir: str, target_column_name: str) -> Any:
     :param target_column_name: the target value - can be useful to name the model file for the target it is intended for
     :returns: the model
     """
-    # TODO: implement your model loading code here
+    input_shape = (224, 224, 3)
+    learning_rate = 0.0001
+
+    model_densenet = create_model_densenet(input_shape_densenet, learning_rate, reg_strength=reg_strength)
+
+    model = model_densenet.load_weights(f'{trained_model_dir}/{target_column_name.replace(" ","_")}_best_weights.h5')
+    
     raise RuntimeError("load_model() is not implemented.")
+    return model
