@@ -22,9 +22,10 @@ from tensorflow.keras.applications import DenseNet121
 from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, BatchNormalization, Dropout
 from tensorflow.keras.preprocessing.image import ImageDataGenerator, load_img, img_to_array, save_img
 
-from common import load_image_labels, load_single_image, save_model
+from common import load_image_labels, load_single_image, create_model_densenet
 
-global IMAGE_HEIGHT = 900, IMAGE_WIDTH = 1200
+IMAGE_HEIGHT = 900
+IMAGE_WIDTH = 1200
 
 
 ########################################################################################################################
@@ -47,7 +48,7 @@ def parse_args():
 # IMAGE NORMALIZATION
 ########################################################################################################################
 
-def normalize_images(datset_dir: str):
+def normalize_images(dataset_dir: str):
     for filename in os.listdir(dataset_dir):
         if filename.endswith('g'):
             img_path = os.path.join(dataset_dir, filename)
@@ -64,7 +65,7 @@ def normalize_images(datset_dir: str):
 
 def organize_images_by_label(dataset_dir: str, csv_file: str, column_name: str):
     
-    labels = load_image_labels(csv_file)
+    Labels = load_image_labels(f"{dataset_dir}/{csv_file}")
     columns = list(Labels.columns)
     label_names = Labels.iloc[:, 0]
     expanded_labels = pd.get_dummies(Labels[columns[1]])
@@ -74,11 +75,11 @@ def organize_images_by_label(dataset_dir: str, csv_file: str, column_name: str):
     folder_names = Labels[columns[1]].unique()
 
     copy_from = f"{dataset_dir}/"
-    copy_to = f'Resouces/Training/Images_{column_name}'
+    copy_to = f'Resources/Training/Images_{column_name}'
 
-    os.path.mkdirs("Resouces/Training", exist_ok=True)
+    os.makedirs("Resources/Training", exist_ok=True)
 
-    os.path.mkdirs(f'Resouces/Training/Images_{column_name}', exist_ok=True)
+    os.makedirs(f'Resources/Training/Images_{column_name}', exist_ok=True)
 
     
     for name in folder_names:
@@ -211,23 +212,29 @@ def image_style_transfer(training_img_dir):
     
     style_path = tf.keras.utils.get_file('kandinsky5.jpg','https://storage.googleapis.com/download.tensorflow.org/example_images/Vassily_Kandinsky%2C_1913_-_Composition_7.jpg')
 
-    for directory in os.listdir(training_img_dir):
-        class_dir = os.path.join(f'{training_img_dir}/', directory)
-        for classes in os.listdir(class_dir):
-            image_dir = os.path.join(class_dir, classes)
-            i = 0
-            for filename in os.listdir(image_dir):
-                image = os.path.join(image_dir, filename)
-                style_transfer = StyleTransfer(image, style_path, content_layers, style_layers)
-                result_image = style_transfer.run()
-                result_image_filename = f"styled_image_{i}.png"
-                result_image_path = os.path.join(image_dir, result_image_filename)
-                result_image.save(result_image_path)
-                i+=1
+    for classes in os.listdir(training_img_dir):
+        image_dir = os.path.join(f'{training_img_dir}/', classes)
+        i = 0
+        for filename in os.listdir(image_dir):
+            image = os.path.join(image_dir, filename)
+            style_transfer = StyleTransfer(image, style_path, content_layers, style_layers)
+            result_image = style_transfer.run()
+            result_image_filename = f"styled_image_{i}.png"
+            result_image_path = os.path.join(image_dir, result_image_filename)
+            result_image.save(result_image_path)
+            i+=1
     
 ########################################################################################################################
 # IMAGE AUGMENTATIONS
 ########################################################################################################################
+
+# Define the augmentation layers
+data_augmentation_layers = tf.keras.Sequential([
+    tf.keras.layers.RandomFlip("horizontal_and_vertical"),
+    tf.keras.layers.RandomRotation(0.2),
+    tf.keras.layers.RandomContrast(factor=0.2),
+    tf.keras.layers.GaussianNoise(30)
+])
 
 def augment_and_resize(image):
     # Apply augmentations and then resize
@@ -321,32 +328,7 @@ def train(input_shape, training_data_densenet, validation_data_densenet, target_
         monitor='val_loss',
         verbose=1)
 
-    def create_model_densenet(input_shape, lr, reg_strength=0.3):
-        opt = SGD(learning_rate=lr)
-        
-        conv_base = DenseNet121(include_top=False,
-                          weights='imagenet',
-                          input_shape=input_shape)
-        
-        for layer in conv_base.layers:
-            layer.trainable = False
-            
-        top_model = conv_base.output
-        top_model = GlobalAveragePooling2D()(top_model)
-        top_model = Dense(128, activation='relu', kernel_regularizer=l2(reg_strength))(top_model)
-        top_model = BatchNormalization()(top_model)
-        top_model = Dropout(0.5)(top_model)
-        output_layer = Dense(1, activation='sigmoid')(top_model)
-        
-        model = Model(inputs=conv_base.input, outputs=output_layer)
-        
-        model.compile(optimizer=opt,
-                      loss='binary_crossentropy',
-                      metrics=['accuracy'])
-        
-        return model
-
-    model_densenet = create_model_densenet(input_shape_densenet, optimizer, learning_rate, reg_strength=reg_strength)
+    model_densenet = create_model_densenet(input_shape, learning_rate, reg_strength=reg_strength)
     lr_scheduler = step_decay_schedule(learning_rate, decay_factor, step_size)
     history_densenet = model_densenet.fit(training_data_densenet,
                         validation_data=validation_data_densenet,
@@ -379,22 +361,14 @@ def main(train_input_dir: str, train_labels_file_name: str, target_column_name: 
     training_img_dir = organize_images_by_label(train_input_dir, train_labels_file_name, target_column_name)
     image_style_transfer(training_img_dir)
     
-    # Define the augmentation layers
-    data_augmentation_layers = tf.keras.Sequential([
-        tf.keras.layers.RandomFlip("horizontal_and_vertical"),
-        tf.keras.layers.RandomRotation(0.2),
-        tf.keras.layers.RandomContrast(factor=0.2),
-        tf.keras.layers.GaussianNoise(30)
-    ])
-
-    augment_and_save_dataset(training_img_dir, training_img_dir, num_samples = 50)
+    augment_and_save_dataset(training_img_dir, training_img_dir, num_samples = 1)
 
     train_datagen = ImageDataGenerator(rescale = 1./255, validation_split = 0.2)
 
     input_shape = (224,224,3)
 
-    training_data_densenet = train_datagen.flow_from_directory(directory = img_dir_train, target_size = (224, 224), color_mode = 'rgb', batch_size = 32, class_mode = 'binary', subset='training', shuffle = True, seed = 42)
-    validation_data_densenet = train_datagen.flow_from_directory(directory = img_dir_train, target_size = (224, 224), color_mode = 'rgb', batch_size = 32, class_mode = 'binary', subset='validation', shuffle = True, seed = 42)
+    training_data_densenet = train_datagen.flow_from_directory(directory = training_img_dir, target_size = (224, 224), color_mode = 'rgb', batch_size = 32, class_mode = 'binary', subset='training', shuffle = True, seed = 42)
+    validation_data_densenet = train_datagen.flow_from_directory(directory = training_img_dir, target_size = (224, 224), color_mode = 'rgb', batch_size = 32, class_mode = 'binary', subset='validation', shuffle = True, seed = 42)
 
     train(input_shape, training_data_densenet, validation_data_densenet, target_column_name, train_output_dir)
 

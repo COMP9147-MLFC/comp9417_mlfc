@@ -17,6 +17,12 @@ sudo cp /var/cudnn-local-repo-ubuntu2204-9.1.0/cudnn-*-keyring.gpg /usr/share/ke
 sudo apt-get update
 sudo apt-get -y install cudnn
 
+export CUDA_DIR=/usr/local/cuda
+export PATH=/usr/local/cuda/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+source ~/.bashrc
+
+
 # Install python package requirements from requirements.txt
 # Add packages you need for your pipeline to requirements.txt file
 pip install -r requirements.txt
