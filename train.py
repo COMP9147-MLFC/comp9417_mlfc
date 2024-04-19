@@ -18,7 +18,7 @@ from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.preprocessing import image_dataset_from_directory
 from tensorflow.keras.callbacks import LearningRateScheduler, EarlyStopping, ModelCheckpoint
-from tensorflow.keras.applications import DenseNet121
+from tensorflow.keras.applications import DenseNet121, VGG19
 from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, BatchNormalization, Dropout
 from tensorflow.keras.preprocessing.image import ImageDataGenerator, load_img, img_to_array, save_img
 
@@ -169,7 +169,7 @@ def tensor_to_image(tensor):
     return PIL.Image.fromarray(tensor)
 
 def vgg_layers(layer_names):
-    vgg = tf.keras.applications.VGG19(include_top=False, weights='resources/pretrained/vgg19_weights_tf_dim_ordering_tf_kernels_notop.h5')
+    vgg = VGG19(include_top=False, weights='resources/pretrained/vgg19_weights_tf_dim_ordering_tf_kernels_notop.h5')
     vgg.trainable = False
     outputs = [vgg.get_layer(name).output for name in layer_names]
     model = tf.keras.Model(inputs=vgg.input, outputs=outputs)

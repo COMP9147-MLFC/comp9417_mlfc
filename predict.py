@@ -79,7 +79,6 @@ def main(predict_data_image_dir: str,
     # Load in the image list
     image_list_file = os.path.join(predict_data_image_dir, predict_image_list)
     image_filenames = load_predict_image_names(image_list_file)
-    print(image_filenames)
     # Iterate through the image list to generate predictions
     predictions = []
     for filename in image_filenames:
