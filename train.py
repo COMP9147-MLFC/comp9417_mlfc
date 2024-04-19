@@ -22,7 +22,7 @@ from tensorflow.keras.applications import DenseNet121
 from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, BatchNormalization, Dropout
 from tensorflow.keras.preprocessing.image import ImageDataGenerator, load_img, img_to_array, save_img
 
-from common import load_image_labels, load_single_image, create_model_densenet
+from common import load_image_labels, create_model_densenet
 
 IMAGE_HEIGHT = 900
 IMAGE_WIDTH = 1200
@@ -49,13 +49,19 @@ def parse_args():
 ########################################################################################################################
 
 def normalize_images(dataset_dir: str):
+    """
+    Normalizes the image pixel to the range from 0 to 255
+    """
     for filename in os.listdir(dataset_dir):
         if filename.endswith('g'):
             img_path = os.path.join(dataset_dir, filename)
             img = Image.open(img_path)
             img_array = np.array(img)
+            #normalizing
             img_array = (img_array / np.max(img_array)) * 255
+            #defining datatype of the array
             img_array = img_array.astype(np.uint8)
+            #converting array to an image
             img = Image.fromarray(img_array)
             img.save(img_path)
 
@@ -64,28 +70,54 @@ def normalize_images(dataset_dir: str):
 ########################################################################################################################
 
 def organize_images_by_label(dataset_dir: str, csv_file: str, column_name: str):
-    
+
+    """
+    This section organizes images into a new folder according to thier label from the .csv file.
+    The images are organized and stored in the following structure:
+    -> resources
+        -> Training
+            ->Images_<TARGET_COLUMN_NAME>
+                -> No <Label>
+                -> Yes <Label>
+
+    :param dataset_dir: the directory where the original training images are saved.
+    :param csv_file: the directory where the csv file with labels is saved
+    :param column_name: the name of the column have labels
+    :returns: the training image directory
+    """
+
+    #loads the csv file
     Labels = load_image_labels(f"{dataset_dir}/{csv_file}")
+    #gets a list of column names
     columns = list(Labels.columns)
-    label_names = Labels.iloc[:, 0]
-    expanded_labels = pd.get_dummies(Labels[columns[1]])
+    #gets a list of images
+    label_names = Labels.loc[:,"Filename"]
+    #performing one-hot-encoding
+    expanded_labels = pd.get_dummies(Labels[column_name])
+    #converting the one-hot-encoded label into boolean type
     expanded_labels = expanded_labels.astype('bool')
+    #creating a new dataframe with 
     frames = [label_names, expanded_labels]
     df = pd.concat(frames, axis = 1)
-    folder_names = Labels[columns[1]].unique()
 
+    #settting up the folder names according to the labels (Yes, No)
+    folder_names = Labels[column_name].unique()
+
+    #copy images from the root directory
     copy_from = f"{dataset_dir}/"
-    copy_to = f'Resources/Training/Images_{column_name}'
 
-    os.makedirs("Resources/Training", exist_ok=True)
+    #copy images to the resouces directory
+    copy_to = f'resources/Training/Images_{column_name}'
 
-    os.makedirs(f'Resources/Training/Images_{column_name}', exist_ok=True)
+    os.makedirs("resources/Training", exist_ok=True)
 
-    
+    os.makedirs(f'resources/Training/Images_{column_name}', exist_ok=True)
+
     for name in folder_names:
         if os.path.exists(f'{copy_to}/{name}') == False:
             os.mkdir(f'{copy_to}/{name}')
 
+    #Organizes and saves images
     for name in folder_names:
         files = df.Filename[df[name] == True]
         num_samples = len(files)
@@ -105,6 +137,13 @@ def organize_images_by_label(dataset_dir: str, csv_file: str, column_name: str):
 ########################################################################################################################
 # STYLE TRANSFER
 ########################################################################################################################
+
+    """
+    THE CODE TO THIS SECTION IS REFERED FROM: https://www.tensorflow.org/tutorials/generative/style_transfer
+    
+    This section performs style transfer over the training images. It takes a style content image as input and creats a subtle layer of style over the original image.
+    
+    """
 
 def load_img(path_to_img):
     max_dim = 512
@@ -130,7 +169,7 @@ def tensor_to_image(tensor):
     return PIL.Image.fromarray(tensor)
 
 def vgg_layers(layer_names):
-    vgg = tf.keras.applications.VGG19(include_top=False, weights='imagenet')
+    vgg = tf.keras.applications.VGG19(include_top=False, weights='resources/pretrained/vgg19_weights_tf_dim_ordering_tf_kernels_notop.h5')
     vgg.trainable = False
     outputs = [vgg.get_layer(name).output for name in layer_names]
     model = tf.keras.Model(inputs=vgg.input, outputs=outputs)
@@ -204,13 +243,20 @@ class StyleTransfer:
         for _ in range(self.iterations):
             self.train_step(image)
         return tensor_to_image(image.read_value())
+        
 
 def image_style_transfer(training_img_dir):
+
+    """
+    Uses the functions and classes defined above to perform style transfer and save the styled images in the same directory.
+    
+    :param training_img_dir: the directory where the training images are saved.
+    """
     content_layers = ['block5_conv2'] 
     
     style_layers = ['block1_conv1','block2_conv1','block3_conv1','block4_conv1','block5_conv1']
     
-    style_path = tf.keras.utils.get_file('kandinsky5.jpg','https://storage.googleapis.com/download.tensorflow.org/example_images/Vassily_Kandinsky%2C_1913_-_Composition_7.jpg')
+    style_path = "resources/pretrained/style_content.png"
 
     for classes in os.listdir(training_img_dir):
         image_dir = os.path.join(f'{training_img_dir}/', classes)
@@ -228,11 +274,31 @@ def image_style_transfer(training_img_dir):
 # IMAGE AUGMENTATIONS
 ########################################################################################################################
 
+    """
+    This section performs basic image augmentation techniques like rotation, flip, etc.
+
+    The code structure of this section is:
+    -> augment_and_save_dataset
+        -> load_and_preprocess_image
+        -> generate_multiple_augmented_sample
+            -> augment_and_resize
+
+    The augmentation technique use parallel GPU processing to generate multiple augmented samples of each image in relatively short amount of time.
+
+    :param image_dir: the directory where the training images are saved.
+    :param save_dir: the directory where the augmented images needs to be saved
+    :param num_samples: number of augmented samples required for each image
+    """
+
 # Define the augmentation layers
 data_augmentation_layers = tf.keras.Sequential([
+    #horizontal andd vertical flip
     tf.keras.layers.RandomFlip("horizontal_and_vertical"),
+    #rotation
     tf.keras.layers.RandomRotation(0.2),
+    #contrast
     tf.keras.layers.RandomContrast(factor=0.2),
+    #Gaussian Noise
     tf.keras.layers.GaussianNoise(30)
 ])
 
@@ -251,7 +317,7 @@ def load_and_preprocess_image(file_path):
     return image
 
 def generate_multiple_augmented_samples(image, num_samples):
-    # Generate 10 augmented samples for a single image
+    # Generate <num_samples> augmented samples for a single image
     return tf.data.Dataset.from_tensors(image).repeat(num_samples).map(
         augment_and_resize, num_parallel_calls=tf.data.AUTOTUNE)
 
@@ -276,60 +342,75 @@ def augment_and_save_dataset(image_dir, save_dir, num_samples=10):
             tf.keras.utils.save_img(save_path, batch[0].numpy())
             i += 1
 
-############################################################################################
+########################################################################################################################
+# Learning Rate Decay
+########################################################################################################################
 
 def step_decay_schedule(initial_lr, decay_factor=0.1, step_size=10):
-  def schedule(epoch):
-    return initial_lr * (decay_factor ** np.floor(epoch / step_size))
+    """
+    Preforms learning rate decay by using the step-decay method.
     
-  return LearningRateScheduler(schedule)
-
-##################################################
-
-
-def load_train_resources(resource_dir: str = 'resources') -> Any:
+    :param initial_lr: the initial learning rate
+    :param decay_factor: the factor by which the learning rate should decay
+    :param step_size: describe after how many steps the learning must decay
+    :return: LearninigRateScheduler -> function()
     """
-    Load any resources (i.e. pre-trained models, data files, etc) here.
-    Make sure to submit the resources required for your algorithms in the sub-folder 'resources'
-    :param resource_dir: the relative directory from train.py where resources are kept.
-    :return: TBD
-    """
-    raise RuntimeError(
-        "load_train_resources() not implement. If you have no pre-trained models you can comment this out.")
+    def schedule(epoch):
+        return initial_lr * (decay_factor ** np.floor(epoch / step_size))
+    
+    return LearningRateScheduler(schedule)
+
+########################################################################################################################
 
 
 def train(input_shape, training_data_densenet, validation_data_densenet, target_column_name, output_dir: str) -> Any:
     """
     Trains a classification model using the training images and corresponding labels.
 
-    :param images: the list of image (or array data)
-    :param labels: the list of training labels (str or 0,1)
-    :param output_dir: the directory to write logs, stats, etc to along the way
-    :return: model: model file(s) trained.
+    :param input_shape: shape of the input images for the purpose of training the model
+    :param traininig_data_densenet: the data required for training the model
+    :param validation_data_densenet: the data required for validate the model
+    :param target_column_name: the name of the column having labels
+    :param output_dir: the directory to model weights
+    :return: None
     """
 
-    n_epochs = 10
-    learning_rate = 0.001
+    #number of epochs
+    n_epochs = 15
+    #initial learning rate
+    learning_rate = 0.001 
+    #initialize decay factor
     decay_factor = 0.05
+    #initialize steps for learning rate decay
     step_size = 5
+    #initialize regularization strength
     reg_strength = 0.0001
+    #initialize batch size
     BATCH_SIZE = 32
+    #sets the number of training steps
     n_steps = training_data_densenet.samples // BATCH_SIZE
+    #sets the number of validation steps
     n_val_steps = validation_data_densenet.samples // BATCH_SIZE
 
+    #defining early stopping function to avoid overfitting
     early_stopping = EarlyStopping(monitor='val_loss',
                                    patience=3,
                                    verbose=1,
                                    restore_best_weights=True)
-
+    #creates model checkpoint for the best learned weights and save the best model into the output directory
     model_checkpoint_densenet121 = ModelCheckpoint(
         filepath=f'{output_dir}/{target_column_name.replace(" ","_")}_best_weights.h5',
         save_best_only=True,
         monitor='val_loss',
         verbose=1)
 
+    #calling the function create_model_densenet
     model_densenet = create_model_densenet(input_shape, learning_rate, reg_strength=reg_strength)
+    
+    #setting up the learning rate scheduler for performing step decay
     lr_scheduler = step_decay_schedule(learning_rate, decay_factor, step_size)
+
+    #training the model
     history_densenet = model_densenet.fit(training_data_densenet,
                         validation_data=validation_data_densenet,
                         steps_per_epoch=n_steps,
@@ -338,7 +419,7 @@ def train(input_shape, training_data_densenet, validation_data_densenet, target_
                         callbacks=[lr_scheduler, early_stopping, model_checkpoint_densenet121],
                         verbose=1)
 
-    raise RuntimeError("train() is not implemented.")
+    
     return
 
 
@@ -357,23 +438,32 @@ def main(train_input_dir: str, train_labels_file_name: str, target_column_name: 
     :param target_column_name: Name of the target column within the CSV file
     :param train_output_dir: the folder to save training output.
     """
+    #image normalization
     normalize_images(train_input_dir)
-    training_img_dir = organize_images_by_label(train_input_dir, train_labels_file_name, target_column_name)
-    image_style_transfer(training_img_dir)
-    
-    augment_and_save_dataset(training_img_dir, training_img_dir, num_samples = 1)
 
+    #organizing images according to labels
+    training_img_dir = organize_images_by_label(train_input_dir, train_labels_file_name, target_column_name)
+
+    #peforming style transfer
+    image_style_transfer(training_img_dir)
+
+    #performing image augmentation    
+    augment_and_save_dataset(training_img_dir, training_img_dir, num_samples = 30)
+
+    #defining a fuction ImageDataGenerator to generate training and validation samples and rescale the images in range 0 to 1
     train_datagen = ImageDataGenerator(rescale = 1./255, validation_split = 0.2)
 
+    #input shape required for DenseNet121 model
     input_shape = (224,224,3)
 
+    #generating training data
     training_data_densenet = train_datagen.flow_from_directory(directory = training_img_dir, target_size = (224, 224), color_mode = 'rgb', batch_size = 32, class_mode = 'binary', subset='training', shuffle = True, seed = 42)
+
+    #generating validation data
     validation_data_densenet = train_datagen.flow_from_directory(directory = training_img_dir, target_size = (224, 224), color_mode = 'rgb', batch_size = 32, class_mode = 'binary', subset='validation', shuffle = True, seed = 42)
 
+    #performing training of the DenseNet121 model
     train(input_shape, training_data_densenet, validation_data_densenet, target_column_name, train_output_dir)
-
-    
-
 
 if __name__ == '__main__':
     """

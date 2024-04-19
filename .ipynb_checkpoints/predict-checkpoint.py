@@ -3,7 +3,9 @@ import os
 from typing import Any
 
 import pandas as pd
+import numpy as np
 from PIL import Image
+import tensorflow as tf
 
 from common import load_model, load_predict_image_names, load_single_image
 
@@ -39,9 +41,14 @@ def predict(model: Any, image: Image) -> str:
     :param image: the image file to predict.
     :return: the label ('Yes' or 'No)
     """
-    predicted_label = 'No'
-    # TODO: Implement your logic to generate prediction for an image here.
-    raise RuntimeError("predict() is not implemented.")
+    prediction = model.predict(image)
+    
+    #setting up a threshold for classification
+    if prediction > 0.5:
+        predicted_label = 'Yes'
+    else:
+        predicted_label = 'No'
+    
     return predicted_label
 
 
@@ -72,13 +79,21 @@ def main(predict_data_image_dir: str,
     # Load in the image list
     image_list_file = os.path.join(predict_data_image_dir, predict_image_list)
     image_filenames = load_predict_image_names(image_list_file)
-
+    print(image_filenames)
     # Iterate through the image list to generate predictions
     predictions = []
     for filename in image_filenames:
         try:
             image_path = os.path.join(predict_data_image_dir, filename)
             image = load_single_image(image_path)
+            
+            #Recales the image pixel in the range 0 to 1
+            image = image/np.max(image) 
+            #Resize the image to the model requirements
+            image = tf.image.resize(image, size = [224, 224])
+            #converts the image from numpya array to a tensor of shape (batch_size, 224, 224, 3)
+            image = tf.expand_dims(image, axis=0)
+            
             label = predict(model, image)
             predictions.append(label)
         except Exception as ex:
